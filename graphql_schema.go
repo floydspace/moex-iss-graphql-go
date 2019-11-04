@@ -13,6 +13,7 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/imdario/mergo"
 	"github.com/jinzhu/inflection"
+	"github.com/tidwall/gjson"
 )
 
 var baseURL = "https://iss.moex.com/iss"
@@ -120,7 +121,7 @@ func generateQueries(options options) (queries graphql.Fields) {
 	}
 
 	refMetaURL := fmt.Sprintf("%s/%s.json?iss.meta=on&iss.data=off", baseURL, pathWithDefaultArgs)
-	metaResult, err := utils.FetchJSON(refMetaURL)
+	metaResult, err := utils.FetchBytes(refMetaURL)
 	if err != nil {
 		log.Fatalf("failed to fetch reference metadata, error: %v", err)
 	}
@@ -139,20 +140,18 @@ func generateQueries(options options) (queries graphql.Fields) {
 		}
 
 		queries[queryName] = &graphql.Field{
-			Type:        graphql.NewList(generateType(queryName, metaResult.(map[string]interface{})[blockName].(map[string]interface{})["metadata"])),
+			Type:        graphql.NewList(generateType(queryName, gjson.GetBytes(metaResult, strings.ReplaceAll(blockName, `.`, `\.`)).Get("metadata"))),
 			Description: block.description,
 			Args:        generateArguments(requiredArgs, block.args, options.defaultArgs),
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				url := buildURL(path, p.Args, requiredArgs, blockName)
-				data, err := utils.FetchJSON(url)
+				result, err := utils.FetchBytes(url)
 				if err != nil {
 					log.Fatalf("failed to fetch data, error: %v", err)
 					return nil, err
 				}
 
-				results := data.([]interface{})[1].(map[string]interface{})
-
-				return results[blockName], nil
+				return gjson.ParseBytes(result).Array()[1].Get(blockName).Value(), nil
 			},
 		}
 	}
@@ -185,10 +184,10 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 	return fmt.Sprintf("%s/%s.json?%s", baseURL, path, strings.Join(queryParams, "&"))
 }
 
-func generateType(queryName string, metadata interface{}) graphql.Type {
+func generateType(queryName string, metadata gjson.Result) graphql.Type {
 	var fields = make(graphql.Fields)
 
-	for field, data := range metadata.(map[string]interface{}) {
+	for field, data := range metadata.Map() {
 		fields[strcase.ToSnake(field)] = func(field string, issType string) *graphql.Field {
 			return &graphql.Field{
 				Type: typeMappings[issType],
@@ -196,7 +195,7 @@ func generateType(queryName string, metadata interface{}) graphql.Type {
 					return normalizeFieldValue(issType, p.Source.(map[string]interface{})[field]), nil
 				},
 			}
-		}(field, data.(map[string]interface{})["type"].(string))
+		}(field, data.Get("type").String())
 	}
 
 	return graphql.NewObject(graphql.ObjectConfig{

@@ -10,5 +10,6 @@ require (
 	github.com/imdario/mergo v0.3.8
 	github.com/jinzhu/inflection v1.0.0
 	github.com/stretchr/testify v1.4.0 // indirect
+	github.com/tidwall/gjson v1.3.4
 	gopkg.in/yaml.v2 v2.2.4 // indirect
 )
