@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/floydspace/moex-iss-graphql-go/utils"
 	"github.com/graphql-go/graphql"
@@ -21,7 +22,7 @@ var typeMappings = map[string]*graphql.Scalar{
 	"int64":    graphql.Int,
 	"string":   graphql.String,
 	"date":     graphql.String,
-	"datetime": graphql.String,
+	"datetime": graphql.DateTime,
 	"double":   graphql.Float,
 	"var":      graphql.String,
 	"number":   graphql.Int,
@@ -229,7 +230,12 @@ func generateArguments(requiredArgs []string, otherArgs []argument, defaultArgs 
 
 func normalizeFieldValue(typ string, value interface{}) interface{} {
 	if typ == "datetime" && value != nil {
-		return strings.ReplaceAll(strings.TrimSpace(value.(string)), " ", "T") + "+03:00" // Moscow timezone
+		datetime, err := time.Parse("2006-01-02 15:04:05", value.(string))
+		if err != nil {
+			log.Fatalf("failed parse datetime string, error: %v", err)
+		}
+
+		return datetime
 	}
 
 	return value
