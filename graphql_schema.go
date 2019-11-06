@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/floydspace/moex-iss-graphql-go/utils"
+	"github.com/floydspace/strcase"
 	"github.com/graphql-go/graphql"
-	"github.com/iancoleman/strcase"
 	"github.com/imdario/mergo"
 	"github.com/jinzhu/inflection"
 	"github.com/tidwall/gjson"
