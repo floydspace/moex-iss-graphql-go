@@ -199,7 +199,7 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 		delete(queryArgs, arg)
 	}
 
-	// Cannot handle requesetf fields properly, due to column names in iss case sensetive
+	// Cannot handle requeset fields properly, due to column names in iss are case sensetive
 	// requestedFields := getRequestedFields(info)
 
 	queryParams := []string{
