@@ -24,6 +24,7 @@ var typeMappings = map[string]*graphql.Scalar{
 	"int64":    graphql.Int,
 	"string":   graphql.String,
 	"date":     graphql.String,
+	"time":     graphql.String,
 	"datetime": graphql.DateTime,
 	"double":   graphql.Float,
 	"var":      graphql.String,
@@ -44,6 +45,10 @@ var commonInputTypes = map[string]graphql.Input{
 	"lang": generateEnum("Language", []string{"ru", "en"}),
 }
 
+var commonOutputTypes = map[string]*graphql.Object{
+	"engine": graphql.NewObject(graphql.ObjectConfig{Name: "Engine", Fields: make(graphql.Fields)}),
+}
+
 func generateSchema() *graphql.Schema {
 	fields := parallelGenerateQueries([]options{
 		options{ref: 5,
@@ -56,6 +61,14 @@ func generateSchema() *graphql.Schema {
 			},
 		},
 		options{ref: 13, prefix: "security"},
+		options{ref: 40},
+		options{ref: 41,
+			defaultArgs: map[string]string{"engine": "stock"},
+			queryNameReplaces: map[string]string{
+				"dailytable": "dailyTable",
+				"timetable":  "timeTable",
+			},
+		},
 		options{ref: 24,
 			queryNameReplaces: map[string]string{
 				"turnoversprevdate":        "turnoversPreviousDate",
@@ -186,14 +199,15 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 		delete(queryArgs, arg)
 	}
 
-	requestedFields := getRequestedFields(info)
+	// Cannot handle requesetf fields properly, due to column names in iss case sensetive
+	// requestedFields := getRequestedFields(info)
 
 	queryParams := []string{
 		"iss.meta=off",
 		"iss.data=on",
 		"iss.json=extended",
 		"iss.only=" + blockName,
-		blockName + ".columns=" + strings.Join(requestedFields, ","),
+		// blockName + ".columns=" + strings.Join(requestedFields, ","),
 	}
 
 	for key, val := range queryArgs {
@@ -220,24 +234,36 @@ func getRequestedFields(info graphql.ResolveInfo) (fields []string) {
 	return
 }
 
-func generateType(queryName string, metadata gjson.Result) graphql.Type {
-	var fields = make(graphql.Fields)
-
-	for field, data := range metadata.Map() {
-		fields[strcase.ToSnake(field)] = func(field string, issType string) *graphql.Field {
-			return &graphql.Field{
-				Type: typeMappings[issType],
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return normalizeFieldValue(issType, p.Source.(map[string]interface{})[field]), nil
-				},
-			}
-		}(field, data.Get("type").String())
+func generateType(queryName string, metadata gjson.Result) (gqlType *graphql.Object) {
+	if gqlObject, ok := commonOutputTypes[inflection.Singular(queryName)]; ok {
+		gqlType = gqlObject
+	} else {
+		gqlType = graphql.NewObject(graphql.ObjectConfig{
+			Name:   strcase.ToCamel(inflection.Singular(queryName)),
+			Fields: make(graphql.Fields),
+		})
 	}
 
-	return graphql.NewObject(graphql.ObjectConfig{
-		Name:   strcase.ToCamel(inflection.Singular(queryName)),
-		Fields: fields,
-	})
+	for field, data := range metadata.Map() {
+		issType := data.Get("type").String()
+		gqlType.AddFieldConfig(
+			strcase.ToSnake(field),
+			&graphql.Field{
+				Type: typeMappings[issType],
+				Resolve: func(p graphql.ResolveParams) (result interface{}, err error) {
+					for key, val := range p.Source.(map[string]interface{}) {
+						if strcase.ToSnake(key) == p.Info.FieldName {
+							result = normalizeFieldValue(issType, val)
+							break
+						}
+					}
+					return
+				},
+			},
+		)
+	}
+
+	return
 }
 
 func generateArguments(requiredArgs []string, otherArgs []argument, options options) (fieldArgs graphql.FieldConfigArgument) {
