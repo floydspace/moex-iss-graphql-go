@@ -11,6 +11,7 @@ import (
 	"github.com/floydspace/moex-iss-graphql-go/utils"
 	"github.com/floydspace/strcase"
 	"github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/ast"
 	"github.com/imdario/mergo"
 	"github.com/jinzhu/inflection"
 	"github.com/tidwall/gjson"
@@ -159,7 +160,7 @@ func generateQueries(options options) (queries graphql.Fields) {
 			Description: block.description,
 			Args:        generateArguments(requiredArgs, block.args, options),
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-				url := buildURL(path, p.Args, requiredArgs, blockName)
+				url := buildURL(path, p.Args, requiredArgs, blockName, p.Info)
 				result, err := utils.FetchBytes(url)
 				if err != nil {
 					log.Fatalf("failed to fetch data, error: %v", err)
@@ -174,7 +175,7 @@ func generateQueries(options options) (queries graphql.Fields) {
 	return
 }
 
-func buildURL(path string, args map[string]interface{}, requiredArgs []string, blockName string) string {
+func buildURL(path string, args map[string]interface{}, requiredArgs []string, blockName string, info graphql.ResolveInfo) string {
 	var queryArgs map[string]interface{}
 	if err := mergo.Merge(&queryArgs, args); err != nil {
 		log.Fatalf("failed to merge gql fields, error: %v", err)
@@ -185,11 +186,14 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 		delete(queryArgs, arg)
 	}
 
+	requestedFields := getRequestedFields(info)
+
 	queryParams := []string{
 		"iss.meta=off",
 		"iss.data=on",
 		"iss.json=extended",
 		"iss.only=" + blockName,
+		blockName + ".columns=" + strings.Join(requestedFields, ","),
 	}
 
 	for key, val := range queryArgs {
@@ -197,6 +201,23 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 	}
 
 	return fmt.Sprintf("%s/%s.json?%s", baseURL, path, strings.Join(queryParams, "&"))
+}
+
+func getRequestedFields(info graphql.ResolveInfo) (fields []string) {
+	queryKey := info.Path.Key.(string)
+
+	for _, querySelection := range info.Operation.GetSelectionSet().Selections {
+		query := querySelection.(*ast.Field)
+		if (query.Alias != nil && query.Alias.Value == queryKey) || query.Name.Value == queryKey {
+			for _, fieldSelection := range query.GetSelectionSet().Selections {
+				field := fieldSelection.(*ast.Field)
+				fields = append(fields, field.Name.Value)
+			}
+			break
+		}
+	}
+
+	return
 }
 
 func generateType(queryName string, metadata gjson.Result) graphql.Type {
