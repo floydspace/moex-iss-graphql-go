@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/PuerkitoBio/goquery v1.5.0
-	github.com/floydspace/strcase v0.0.0-20191106075400-b9881d45a533
+	github.com/floydspace/strcase v1.0.0
 	github.com/graphql-go/graphql v0.7.8
 	github.com/graphql-go/handler v0.2.3
 	github.com/imdario/mergo v0.3.8
