@@ -27,18 +27,30 @@ var typeMappings = map[string]*graphql.Scalar{
 	"double":   graphql.Float,
 	"var":      graphql.String,
 	"number":   graphql.Int,
+	"bool":     graphql.Boolean,
 }
 
 type options struct {
 	ref               int
 	prefix            string
 	defaultArgs       map[string]string
+	enumArgs          map[string][]string
+	argTypeReplaces   map[string]string
 	queryNameReplaces map[string]string
 }
 
 func generateSchema() *graphql.Schema {
 	fields := parallelGenerateQueries([]options{
-		options{ref: 5},
+		options{ref: 5,
+			enumArgs: map[string][]string{
+				"lang":     {"ru", "en"},
+				"group_by": {"group", "type"},
+			},
+			argTypeReplaces: map[string]string{
+				"limit":      "number",
+				"is_trading": "bool",
+			},
+		},
 		options{ref: 13, prefix: "security"},
 		options{ref: 24,
 			queryNameReplaces: map[string]string{
@@ -142,7 +154,7 @@ func generateQueries(options options) (queries graphql.Fields) {
 		queries[queryName] = &graphql.Field{
 			Type:        graphql.NewList(generateType(queryName, gjson.GetBytes(metaResult, strings.ReplaceAll(blockName, `.`, `\.`)).Get("metadata"))),
 			Description: block.description,
-			Args:        generateArguments(requiredArgs, block.args, options.defaultArgs),
+			Args:        generateArguments(requiredArgs, block.args, options),
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				url := buildURL(path, p.Args, requiredArgs, blockName)
 				result, err := utils.FetchBytes(url)
@@ -178,7 +190,7 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 	}
 
 	for key, val := range queryArgs {
-		queryParams = append(queryParams, key+"="+val.(string))
+		queryParams = append(queryParams, key+"="+fmt.Sprint(val))
 	}
 
 	return fmt.Sprintf("%s/%s.json?%s", baseURL, path, strings.Join(queryParams, "&"))
@@ -204,27 +216,53 @@ func generateType(queryName string, metadata gjson.Result) graphql.Type {
 	})
 }
 
-func generateArguments(requiredArgs []string, otherArgs []argument, defaultArgs map[string]string) (fieldArgs graphql.FieldConfigArgument) {
+func generateArguments(requiredArgs []string, otherArgs []argument, options options) (fieldArgs graphql.FieldConfigArgument) {
 	fieldArgs = make(graphql.FieldConfigArgument)
 	for _, arg := range requiredArgs {
 		fieldArgs[arg] = &graphql.ArgumentConfig{
 			Type: graphql.NewNonNull(graphql.String),
 		}
 
-		if defaultValue, ok := defaultArgs[arg]; ok {
+		if defaultValue, ok := options.defaultArgs[arg]; ok {
 			fieldArgs[arg].Type = graphql.String
 			fieldArgs[arg].DefaultValue = defaultValue
 		}
 	}
 
 	for _, arg := range otherArgs {
+		argType := arg.typ
+
+		if replacedArgType, ok := options.argTypeReplaces[arg.name]; ok {
+			argType = replacedArgType
+		}
+
+		var gqlType graphql.Input
+		gqlType = typeMappings[argType]
+
+		if argEnum, ok := options.enumArgs[arg.name]; ok {
+			gqlType = generateEnum(arg.name, argEnum)
+		}
+
 		fieldArgs[arg.name] = &graphql.ArgumentConfig{
-			Type:        typeMappings[arg.typ],
+			Type:        gqlType,
 			Description: arg.description,
 		}
 	}
 
 	return
+}
+
+func generateEnum(argName string, argEnum []string) *graphql.Enum {
+	enumValues := make(map[string]*graphql.EnumValueConfig)
+
+	for _, val := range argEnum {
+		enumValues[strcase.ToScreamingSnake(val)] = &graphql.EnumValueConfig{Value: val}
+	}
+
+	return graphql.NewEnum(graphql.EnumConfig{
+		Name:   strcase.ToCamel(argName),
+		Values: enumValues,
+	})
 }
 
 func normalizeFieldValue(typ string, value interface{}) interface{} {

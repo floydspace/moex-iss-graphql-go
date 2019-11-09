@@ -42,14 +42,14 @@ func parseIssReference(body io.Reader) (path string, requiredArgs []string, bloc
 			typeLabelSelector := argMeta.Find("strong:contains('Type:')")
 			args = append(args, argument{
 				name:        argSelector.Text(),
-				description: strings.TrimSpace(argMeta.Find("> pre").Text()),
+				description: strings.TrimSpace(argMeta.ChildrenFiltered("pre").Text()),
 				typ:         contents.Get(contents.IndexOfSelection(typeLabelSelector) + 1).Data,
 			})
 		})
 
 		blocks = append(blocks, block{
 			name:        strings.Split(blockSelector.Text(), " ")[0],
-			description: strings.TrimSpace(blockArgsSelector.Find("> pre").Text()),
+			description: strings.TrimSpace(blockArgsSelector.ChildrenFiltered("pre").Text()),
 			args:        args,
 		})
 	})
