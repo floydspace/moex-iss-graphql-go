@@ -39,11 +39,14 @@ type options struct {
 	queryNameReplaces map[string]string
 }
 
+var commonInputTypes = map[string]graphql.Input{
+	"lang": generateEnum("Language", []string{"ru", "en"}),
+}
+
 func generateSchema() *graphql.Schema {
 	fields := parallelGenerateQueries([]options{
 		options{ref: 5,
 			enumArgs: map[string][]string{
-				"lang":     {"ru", "en"},
 				"group_by": {"group", "type"},
 			},
 			argTypeReplaces: map[string]string{
@@ -236,8 +239,11 @@ func generateArguments(requiredArgs []string, otherArgs []argument, options opti
 			argType = replacedArgType
 		}
 
-		var gqlType graphql.Input
-		gqlType = typeMappings[argType]
+		var gqlType graphql.Input = typeMappings[argType]
+
+		if inputType, ok := commonInputTypes[arg.name]; ok {
+			gqlType = inputType
+		}
 
 		if argEnum, ok := options.enumArgs[arg.name]; ok {
 			gqlType = generateEnum(arg.name, argEnum)
