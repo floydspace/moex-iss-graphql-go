@@ -109,6 +109,18 @@ func generateSchema() *graphql.Schema {
 			defaultArgs: map[string]string{"engine": "stock", "market": "shares"},
 		},
 		options{ref: 100, suffix: "columns"},
+		options{ref: 191},
+		options{ref: 192, prefix: "sitenews",
+			argTypeReplaces: map[string]string{
+				"news_id": "number",
+			},
+		},
+		options{ref: 193},
+		options{ref: 194, prefix: "events",
+			argTypeReplaces: map[string]string{
+				"event_id": "number",
+			},
+		},
 	})
 
 	rootQuery := graphql.NewObject(graphql.ObjectConfig{
@@ -179,7 +191,7 @@ func generateQueries(options options) (queries graphql.Fields) {
 			replacedBlockName = val
 		}
 
-		queryName := replacedBlockName
+		queryName := strcase.ToLowerCamel(replacedBlockName)
 		if options.prefix != reflect.Zero(reflect.TypeOf(options.prefix)).Interface() {
 			queryName = strcase.ToLowerCamel(options.prefix) + strcase.ToCamel(replacedBlockName)
 		}
@@ -218,7 +230,7 @@ func buildURL(path string, args map[string]interface{}, requiredArgs []string, b
 	}
 
 	for _, arg := range requiredArgs {
-		path = strings.ReplaceAll(path, "["+arg+"]", queryArgs[arg].(string))
+		path = strings.ReplaceAll(path, "["+arg+"]", fmt.Sprint(queryArgs[arg]))
 		delete(queryArgs, arg)
 	}
 
@@ -292,12 +304,18 @@ func generateType(queryName string, metadata gjson.Result) (gqlType *graphql.Obj
 func generateArguments(requiredArgs []string, otherArgs []argument, options options) (fieldArgs graphql.FieldConfigArgument) {
 	fieldArgs = make(graphql.FieldConfigArgument)
 	for _, arg := range requiredArgs {
+		argType := "string"
+
+		if replacedArgType, ok := options.argTypeReplaces[arg]; ok {
+			argType = replacedArgType
+		}
+
 		fieldArgs[arg] = &graphql.ArgumentConfig{
-			Type: graphql.NewNonNull(graphql.String),
+			Type: graphql.NewNonNull(typeMappings[argType]),
 		}
 
 		if defaultValue, ok := options.defaultArgs[arg]; ok {
-			fieldArgs[arg].Type = graphql.String
+			fieldArgs[arg].Type = typeMappings[argType]
 			fieldArgs[arg].DefaultValue = defaultValue
 		}
 	}
