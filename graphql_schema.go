@@ -35,6 +35,7 @@ var typeMappings = map[string]*graphql.Scalar{
 type options struct {
 	ref               int
 	prefix            string
+	suffix            string
 	defaultArgs       map[string]string
 	enumArgs          map[string][]string
 	argTypeReplaces   map[string]string
@@ -75,6 +76,9 @@ func generateSchema() *graphql.Schema {
 				"turnoverssectors":         "turnoversSectors",
 				"turnoverssectorsprevdate": "turnoversSectorsPreviousDate",
 			},
+			argTypeReplaces: map[string]string{
+				"is_tonight_session": "bool",
+			},
 		},
 		options{ref: 28,
 			queryNameReplaces: map[string]string{
@@ -84,7 +88,11 @@ func generateSchema() *graphql.Schema {
 				"securitycollections": "securityCollections",
 			},
 		},
-		options{ref: 160, prefix: "security"},
+		options{ref: 160, prefix: "security",
+			argTypeReplaces: map[string]string{
+				"only_actual": "bool",
+			},
+		},
 		options{ref: 214, prefix: "security"},
 		options{ref: 95, prefix: "engine",
 			defaultArgs: map[string]string{"engine": "stock"},
@@ -93,7 +101,14 @@ func generateSchema() *graphql.Schema {
 				"turnoverssectors":         "turnoversSectors",
 				"turnoverssectorsprevdate": "turnoversSectorsPreviousDate",
 			},
+			argTypeReplaces: map[string]string{
+				"is_tonight_session": "bool",
+			},
 		},
+		options{ref: 96, prefix: "market",
+			defaultArgs: map[string]string{"engine": "stock", "market": "shares"},
+		},
+		options{ref: 100, suffix: "columns"},
 	})
 
 	rootQuery := graphql.NewObject(graphql.ObjectConfig{
@@ -157,6 +172,7 @@ func generateQueries(options options) (queries graphql.Fields) {
 
 	for _, block := range blocks {
 		blockName := block.name
+		escapedBlockName := strings.ReplaceAll(block.name, `.`, `\.`)
 
 		replacedBlockName := blockName
 		if val, ok := options.queryNameReplaces[blockName]; ok {
@@ -167,9 +183,12 @@ func generateQueries(options options) (queries graphql.Fields) {
 		if options.prefix != reflect.Zero(reflect.TypeOf(options.prefix)).Interface() {
 			queryName = strcase.ToLowerCamel(options.prefix) + strcase.ToCamel(replacedBlockName)
 		}
+		if options.suffix != reflect.Zero(reflect.TypeOf(options.suffix)).Interface() {
+			queryName = strcase.ToLowerCamel(replacedBlockName) + strcase.ToCamel(options.suffix)
+		}
 
 		queries[queryName] = &graphql.Field{
-			Type:        graphql.NewList(generateType(queryName, gjson.GetBytes(metaResult, strings.ReplaceAll(blockName, `.`, `\.`)).Get("metadata"))),
+			Type:        graphql.NewList(generateType(queryName, gjson.GetBytes(metaResult, escapedBlockName).Get("metadata"))),
 			Description: block.description,
 			Args:        generateArguments(requiredArgs, block.args, options),
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
@@ -180,7 +199,11 @@ func generateQueries(options options) (queries graphql.Fields) {
 					return nil, err
 				}
 
-				return gjson.ParseBytes(result).Array()[1].Get(blockName).Value(), nil
+				if len(result) == 0 {
+					return []interface{}{}, nil
+				}
+
+				return gjson.ParseBytes(result).Array()[1].Get(escapedBlockName).Value(), nil
 			},
 		}
 	}
